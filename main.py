@@ -4,7 +4,7 @@ import requests
 from pypresence import Presence, ActivityType
 from dotenv import load_dotenv
 import os
-
+# TODO: log cleaning <-after certain date? certain amount of logs?
 load_dotenv()
 
 # Setup logging
@@ -26,7 +26,7 @@ headers = {
 client_id = os.getenv('DISCORD_CLIENT_ID')
 RPC = Presence(client_id)
 
-# Default image URL
+# Default image URL TODO: change this to image in readme in the future
 default_image_url = 'https://raw.githubusercontent.com/Ray-kong/discord_rich_presence/main/Jellyfin.png'
 
 def connect_rpc():
