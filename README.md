@@ -1,0 +1,2 @@
+# Jellyfin-Discord Rich Presence
+ 
