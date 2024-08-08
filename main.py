@@ -26,11 +26,8 @@ headers = {
 client_id = os.getenv('DISCORD_CLIENT_ID')
 RPC = Presence(client_id)
 
-# Default image
-default_image_path = 'Jellyfin.png'
-if not os.path.isfile(default_image_path):
-    logging.error(f"Default image not found at {default_image_path}.")
-default_image_url = f"file://{os.path.abspath(default_image_path)}"
+# Default image URL
+default_image_url = 'https://raw.githubusercontent.com/Ray-kong/discord_rich_presence/main/Jellyfin.png'
 
 def connect_rpc():
     try:
