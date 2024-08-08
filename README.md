@@ -7,7 +7,7 @@ This project integrates Jellyfin with Discord Rich Presence, allowing you to dis
 
 ## Features
 
-- Displays the currently playing media from Jellyfin on Discord.
+- Displays the currently playing media from [Jellyfin](https://github.com/jellyfin/jellyfin) on Discord.
 - Shows track name, artists, album, and progress.
 - Fetches album covers or uses a default image if none is found.
 - Automatically reconnects to Discord RPC if the connection is lost.
