@@ -26,6 +26,12 @@ headers = {
 client_id = os.getenv('DISCORD_CLIENT_ID')
 RPC = Presence(client_id)
 
+# Default image
+default_image_path = 'Jellyfin.png'
+if not os.path.isfile(default_image_path):
+    logging.error(f"Default image not found at {default_image_path}.")
+default_image_url = f"file://{os.path.abspath(default_image_path)}"
+
 def connect_rpc():
     try:
         RPC.connect()
@@ -33,6 +39,11 @@ def connect_rpc():
     except Exception as e:
         logging.error(f"Error connecting to Discord RPC: {e}")
 
+def validate_env_variables():
+    if not all([jellyfin_url, api_key, user_id, client_id]):
+        raise ValueError("One or more environment variables are missing or invalid.")
+
+validate_env_variables()
 connect_rpc()
 
 def get_current_playing():
@@ -47,7 +58,14 @@ def get_current_playing():
         return None
 
 def get_album_cover_url(item_id, image_type="Primary", max_width=300):
-    return f"{jellyfin_url}/Items/{item_id}/Images/{image_type}?maxWidth={max_width}&quality=90"
+    url = f"{jellyfin_url}/Items/{item_id}/Images/{image_type}?maxWidth={max_width}&quality=90"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return url
+    except requests.exceptions.RequestException:
+        logging.warning(f"Album cover not found for item {item_id}. Using default image.")
+        return default_image_url
 
 def extract_now_playing(sessions):
     if not sessions:
@@ -111,17 +129,23 @@ def update_discord_presence(song_info):
             logging.info("Attempting to reconnect to Discord RPC.")
             connect_rpc()
 
-try:
-    while True:
-        sessions = get_current_playing()
-        now_playing_item = extract_now_playing(sessions)
-        if now_playing_item:
-            update_discord_presence(now_playing_item)
-        else:
-            RPC.clear()
-            logging.info("Cleared Discord presence.")
-        time.sleep(5)  # Check every 5 seconds
-except KeyboardInterrupt:
-    logging.info("Script interrupted by user.")
-    RPC.clear()
-    logging.info("Closed Discord RPC connection.")
+def main():
+    try:
+        while True:
+            sessions = get_current_playing()
+            now_playing_item = extract_now_playing(sessions)
+            if now_playing_item:
+                update_discord_presence(now_playing_item)
+            else:
+                RPC.clear()
+                logging.info("Cleared Discord presence.")
+            time.sleep(5)  # Check every 5 seconds
+    except KeyboardInterrupt:
+        logging.info("Script interrupted by user.")
+        RPC.clear()
+        logging.info("Closed Discord RPC connection.")
+    except Exception as e:
+        logging.error(f"Unhandled exception: {e}")
+
+if __name__ == "__main__":
+    main()
