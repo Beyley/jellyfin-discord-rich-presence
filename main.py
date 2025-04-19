@@ -56,7 +56,12 @@ def get_current_playing():
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        return response.json()
+        sessions = response.json()
+        # Filter sessions by user_id
+        filtered_sessions = [
+            session for session in sessions if session.get("UserId") == user_id
+        ]
+        return filtered_sessions
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to fetch sessions: {e}")
         return None
