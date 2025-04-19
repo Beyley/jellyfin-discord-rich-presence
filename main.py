@@ -74,7 +74,7 @@ def get_imdb_id(now_playing):
     return None
 
 
-FALLBACK = "https://play-lh.googleusercontent.com/FAlWhVMAjAzI6Nxc7bf4KPgjbwA3GT9j2bzeAMnRpdWim_2SXnS9i4zhwasKWIC8PV4"
+FALLBACK = default_image_url
 
 
 def get_album_cover_url(item_id, now_playing, image_type="Primary", max_width=300):
