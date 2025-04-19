@@ -4,127 +4,275 @@ import requests
 from pypresence import Presence, ActivityType
 from dotenv import load_dotenv
 import os
+import base64
+
 # TODO: log cleaning <-after certain date? certain amount of logs?
 load_dotenv()
 
 # Setup logging
-logging.basicConfig(filename='jellyfin_rpc.log', level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    filename="jellyfin_rpc.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 logging.info("Starting Jellyfin Discord RPC script.")
 
 # Jellyfin setup
-jellyfin_url = os.getenv('JELLYFIN_URL')
-api_key = os.getenv('JELLYFIN_API_KEY')
-user_id = os.getenv('JELLYFIN_USER_ID')
-headers = {
-    'X-Emby-Token': api_key,
-    'Content-Type': 'application/json'
-}
+jellyfin_url = os.getenv("JELLYFIN_URL")
+api_key = os.getenv("JELLYFIN_API_KEY")
+user_id = os.getenv("JELLYFIN_USER_ID")
+omdb_api_key = os.getenv("OMDB_API_KEY")
+headers = {"X-Emby-Token": api_key, "Content-Type": "application/json"}
 
 # Discord setup
-client_id = os.getenv('DISCORD_CLIENT_ID')
+client_id = os.getenv("DISCORD_CLIENT_ID")
 RPC = Presence(client_id)
 
-# Default image URL TODO: change this to image in readme in the future
-default_image_url = 'https://raw.githubusercontent.com/Ray-kong/discord_rich_presence/main/Jellyfin.png'
+# Default image URL
+default_image_url = (
+    "https://raw.githubusercontent.com/Ray-kong/discord_rich_presence/main/Jellyfin.png"
+)
+
 
 def connect_rpc():
     try:
         RPC.connect()
-        logging.info("Connected to Discord RPC.")
+        logging.info("Connected to Discord RPC")
     except Exception as e:
-        logging.error(f"Error connecting to Discord RPC: {e}")
+        logging.error(f"Failed to connect to Discord RPC: {e}")
+
 
 def validate_env_variables():
     if not all([jellyfin_url, api_key, user_id, client_id]):
-        raise ValueError("One or more environment variables are missing or invalid.")
+        raise ValueError("Missing required environment variables")
+
 
 validate_env_variables()
 connect_rpc()
+
 
 def get_current_playing():
     url = f"{jellyfin_url}/Sessions?activeWithinSeconds=1"
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        sessions = response.json()
-        return sessions
+        return response.json()
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching current playing item: {e}")
+        logging.error(f"Failed to fetch sessions: {e}")
         return None
 
-def get_album_cover_url(item_id, image_type="Primary", max_width=300):
-    url = f"{jellyfin_url}/Items/{item_id}/Images/{image_type}?maxWidth={max_width}&quality=90"
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return url
-    except requests.exceptions.RequestException:
-        logging.warning(f"Album cover not found for item {item_id}. Using default image.")
-        return default_image_url
+
+def get_imdb_id(now_playing):
+
+    urls = now_playing.get("ExternalUrls", [])
+    for url in urls:
+        if url.get("Name") == "IMDb":
+            imdb_url = url.get("Url", "")
+            # Extract ID from URL like "https://www.imdb.com/title/tt0066921"
+            return imdb_url.split("/")[-1] if imdb_url else None
+    return None
+
+
+FALLBACK = "https://play-lh.googleusercontent.com/FAlWhVMAjAzI6Nxc7bf4KPgjbwA3GT9j2bzeAMnRpdWim_2SXnS9i4zhwasKWIC8PV4"
+
+
+def get_album_cover_url(item_id, now_playing, image_type="Primary", max_width=300):
+    imdb_id = get_imdb_id(now_playing)
+    logging.info(f"IMDB id:{imdb_id}")
+
+    if imdb_id:
+        omdb_url = f"http://img.omdbapi.com/?i={imdb_id}&h=300&apikey={omdb_api_key}"
+        try:
+            # Make a HEAD request to check if the image exists
+            response = requests.head(omdb_url)
+            if response.status_code == 200:
+                return omdb_url
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Failed to verify OMDB image: {e}")
+
+    return FALLBACK
+
 
 def extract_now_playing(sessions):
     if not sessions:
         return None
+
     for session in sessions:
-        now_playing = session.get('NowPlayingItem')
-        play_state = session.get('PlayState')
-        if now_playing and play_state:
-            artists = [artist.get('Name') for artist in now_playing.get('ArtistItems', [])]
+        now_playing = session.get("NowPlayingItem")
+        play_state = session.get("PlayState")
+
+        if not now_playing or not play_state:
+            continue
+
+        media_type = now_playing.get("Type", "Unknown")
+        item_id = now_playing.get("Id")
+        if not item_id:
+            continue
+
+        title = now_playing.get("Name", "Unknown Media")
+
+        if media_type == "Audio":
+            title = now_playing.get("Name", "Unknown Track")
+            artists = [
+                artist.get("Name") for artist in now_playing.get("ArtistItems", [])
+            ]
             if not artists:
-                artists = [artist.get('Name') for artist in now_playing.get('AlbumArtists', [])]
+                artists = [
+                    artist.get("Name") for artist in now_playing.get("AlbumArtists", [])
+                ]
+            album = now_playing.get("Album", "Unknown Album")
+            activity_type = ActivityType.LISTENING
+            details = title
+            state = f"by {', '.join(artists)} from {album}"
 
-            album_cover_url = get_album_cover_url(now_playing.get('Id'))
+        elif media_type == "Movie":
+            title = now_playing.get("Name", "Unknown Movie")
+            year = now_playing.get("ProductionYear")
+            genres = now_playing.get("Genres", [])
+            activity_type = ActivityType.WATCHING
+            details = title
+            state = f"{year} • {', '.join(genres)}" if year and genres else "Movie"
 
-            song_info = {
-                'Name': now_playing.get('Name'),
-                'Artists': artists,
-                'Album': now_playing.get('Album'),
-                'RunTimeTicks': now_playing.get('RunTimeTicks'),
-                'PositionTicks': play_state.get('PositionTicks'),
-                'AlbumCoverUrl': album_cover_url
-            }
-            logging.info(f"Now playing item: {song_info}")
-            return song_info
-    logging.debug("No currently playing item found.")
+        elif media_type == "Episode":
+            series_name = now_playing.get("SeriesName", "Unknown Series")
+            season_number = now_playing.get("ParentIndexNumber")
+            episode_number = now_playing.get("IndexNumber")
+            episode_name = now_playing.get("Name", "Unknown Episode")
+            activity_type = ActivityType.WATCHING
+            details = f"{series_name} S{season_number}E{episode_number}"
+            state = episode_name
+
+        else:
+            activity_type = ActivityType.PLAYING
+            details = title
+            state = media_type
+
+        album_cover_url = get_album_cover_url(item_id, now_playing)
+        is_paused = play_state.get("IsPaused", False)
+        is_muted = play_state.get("IsMuted", False)
+        client = session.get("Client", "Unknown Client")
+
+        media_info = {
+            "Type": media_type,
+            "Id": item_id,
+            "Name": title,
+            "Details": details,
+            "State": state,
+            "AlbumCoverUrl": album_cover_url,
+            "RunTimeTicks": now_playing.get("RunTimeTicks"),
+            "PositionTicks": play_state.get("PositionTicks"),
+            "IsPaused": is_paused,
+            "IsMuted": is_muted,
+            "ClientName": client,
+            "ActivityType": activity_type,
+            "ExternalUrls": now_playing.get("ExternalUrls", []),
+        }
+
+        if media_type == "Audio":
+            media_info.update({"Artists": artists, "Album": album})
+        elif media_type == "Movie":
+            media_info.update({"Year": year, "Genres": genres})
+        elif media_type == "Episode":
+            media_info.update(
+                {
+                    "SeriesName": series_name,
+                    "SeasonNumber": season_number,
+                    "EpisodeNumber": episode_number,
+                }
+            )
+
+        logging.info(f"Now playing: {media_type} - {title}")
+        return media_info
+
     return None
+
 
 def format_time(ticks):
     seconds = ticks // 10**7
     minutes, seconds = divmod(seconds, 60)
     return f"{minutes}:{seconds:02}"
 
+
 def ensure_minimum_length(text, min_length=2):
-    return text if len(text) >= min_length else text + ' ' * (min_length - len(text))
+    return text if len(text) >= min_length else text + " " * (min_length - len(text))
 
-def update_discord_presence(song_info):
+
+def update_discord_presence(media_info):
     try:
-        current_time = format_time(song_info['PositionTicks'])
-        total_time = format_time(song_info['RunTimeTicks'])
+        if not media_info:
+            return
 
-        start_time = int(time.time() - song_info['PositionTicks'] // 10**7)
-        end_time = start_time + song_info['RunTimeTicks'] // 10**7
+        if "PositionTicks" not in media_info or "RunTimeTicks" not in media_info:
+            logging.error("Missing timing information")
+            return
 
-        logging.debug(f"Current time: {current_time}, Total time: {total_time}")
+        current_time = format_time(media_info["PositionTicks"])
+        total_time = format_time(media_info["RunTimeTicks"])
 
-        album_name = ensure_minimum_length(song_info['Album'])
+        start_time = int(time.time() - media_info["PositionTicks"] // 10**7)
+        end_time = start_time + media_info["RunTimeTicks"] // 10**7
+
+        status_details = []
+
+        if media_info["Type"] == "Audio":
+            if media_info.get("TrackNumber"):
+                status_details.append(f"Track: {media_info['TrackNumber']}")
+
+        elif media_info["Type"] == "Movie":
+            if media_info.get("Year"):
+                status_details.append(f"Released: {media_info['Year']}")
+
+        elif media_info["Type"] == "Episode":
+            if media_info.get("SeriesName"):
+                status_details.append(f"Series: {media_info['SeriesName']}")
+
+        if media_info.get("IsPaused"):
+            status_details.append("⏸️ Paused")
+        if media_info.get("IsMuted"):
+            status_details.append("🔇 Muted")
+
+        status_details.append(f"via {media_info.get('ClientName', 'Unknown')}")
+        status_text = "\n".join(status_details)
+
+        buttons = []
+        # Add external URLs as buttons
+        if "ExternalUrls" in media_info:
+            for url in media_info["ExternalUrls"]:
+                name = url.get("Name", "")
+                url_value = url.get("Url", "")
+                if name and url_value:
+                    buttons.append({"label": f"{name}", "url": url_value})
+
+        # Log the presence details before updating
+        logging.info(f"Updating Discord Presence:")
+        logging.info(f"Type: {media_info['Type']}")
+        logging.info(f"Details: {media_info['Details']}")
+        logging.info(f"State: {media_info['State']}")
+        logging.info(f"Time: {current_time} / {total_time}")
+        logging.info(f"Status: {status_text}")
+        if buttons:
+            logging.info(f"Button URLs: {[button['url'] for button in buttons]}")
+        logging.info("---")
 
         RPC.update(
-            activity_type=ActivityType.LISTENING,
-            details=song_info['Name'],
-            state=f"by {', '.join(song_info['Artists'])} from {song_info['Album']}",
+            activity_type=media_info["ActivityType"],
+            details=media_info["Details"],
+            state=media_info["State"],
             start=start_time,
             end=end_time,
-            large_image=song_info['AlbumCoverUrl'],
-            large_text=album_name,
-            small_text=f"{current_time} / {total_time}"
+            large_image=media_info["AlbumCoverUrl"],
+            large_text=media_info.get(
+                "Album", media_info.get("SeriesName", media_info["Name"])
+            ),
+            small_text=f"{current_time} / {total_time}",
+            buttons=buttons,
         )
     except Exception as e:
-        logging.error(f"Error updating Discord presence: {e}")
-        if 'The pipe was closed' in str(e):
-            logging.info("Attempting to reconnect to Discord RPC.")
+        logging.error(f"Failed to update Discord presence: {e}")
+        if "The pipe was closed" in str(e):
             connect_rpc()
+
 
 def main():
     try:
@@ -135,14 +283,13 @@ def main():
                 update_discord_presence(now_playing_item)
             else:
                 RPC.clear()
-                logging.info("Cleared Discord presence.")
-            time.sleep(5)  # Check every 5 seconds
+            time.sleep(5)
     except KeyboardInterrupt:
-        logging.info("Script interrupted by user.")
+        logging.info("Script stopped by user")
         RPC.clear()
-        logging.info("Closed Discord RPC connection.")
     except Exception as e:
-        logging.error(f"Unhandled exception: {e}")
+        logging.error(f"Script failed: {e}")
+
 
 if __name__ == "__main__":
     main()
