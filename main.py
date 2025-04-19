@@ -4,7 +4,6 @@ import requests
 from pypresence import Presence, ActivityType
 from dotenv import load_dotenv
 import os
-import base64
 
 # TODO: log cleaning <-after certain date? certain amount of logs?
 load_dotenv()
@@ -69,7 +68,7 @@ def get_imdb_id(now_playing):
     for url in urls:
         if url.get("Name") == "IMDb":
             imdb_url = url.get("Url", "")
-            # Extract ID from URL like "https://www.imdb.com/title/tt0066921"
+            # Extract ID from URL like "https://www.imdb.com/title/tt0368226"
             return imdb_url.split("/")[-1] if imdb_url else None
     return None
 
@@ -77,7 +76,7 @@ def get_imdb_id(now_playing):
 FALLBACK = default_image_url
 
 
-def get_album_cover_url(item_id, now_playing, image_type="Primary", max_width=300):
+def get_album_cover_url(now_playing):
     imdb_id = get_imdb_id(now_playing)
     logging.info(f"IMDB id:{imdb_id}")
 
@@ -97,6 +96,15 @@ def get_album_cover_url(item_id, now_playing, image_type="Primary", max_width=30
 def extract_now_playing(sessions):
     if not sessions:
         return None
+
+    # Initialize variables with default values
+    artists = []
+    album = "Unknown Album"
+    year = None
+    genres = []
+    series_name = "Unknown Series"
+    season_number = None
+    episode_number = None
 
     for session in sessions:
         now_playing = session.get("NowPlayingItem")
@@ -148,7 +156,7 @@ def extract_now_playing(sessions):
             details = title
             state = media_type
 
-        album_cover_url = get_album_cover_url(item_id, now_playing)
+        album_cover_url = get_album_cover_url(now_playing)
         is_paused = play_state.get("IsPaused", False)
         is_muted = play_state.get("IsMuted", False)
         client = session.get("Client", "Unknown Client")
