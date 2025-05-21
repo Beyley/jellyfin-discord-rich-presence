@@ -82,6 +82,10 @@ FALLBACK = default_image_url
 
 
 def get_album_cover_url(now_playing):
+    # Return FALLBACK immediately if omdb_api_key is not defined
+    if not omdb_api_key:
+        return FALLBACK
+        
     imdb_id = get_imdb_id(now_playing)
     logging.info(f"IMDB id:{imdb_id}")
 
