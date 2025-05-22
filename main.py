@@ -82,6 +82,10 @@ FALLBACK = default_image_url
 
 
 def get_album_cover_url(now_playing):
+    # Return FALLBACK immediately if omdb_api_key is not defined
+    if not omdb_api_key:
+        return FALLBACK
+        
     imdb_id = get_imdb_id(now_playing)
     logging.info(f"IMDB id:{imdb_id}")
 
@@ -249,9 +253,9 @@ def update_discord_presence(media_info):
         status_text = "\n".join(status_details)
 
         buttons = []
-        # Add external URLs as buttons
+        # Add external URLs as buttons (maximum of 2 as per Discord's limit)
         if "ExternalUrls" in media_info:
-            for url in media_info["ExternalUrls"]:
+            for url in media_info["ExternalUrls"][:2]:  # Limit to first 2 URLs
                 name = url.get("Name", "")
                 url_value = url.get("Url", "")
                 if name and url_value:
