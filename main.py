@@ -172,6 +172,7 @@ def extract_now_playing(sessions):
         client = session.get("Client", "Unknown Client")
         if media_type == "Audio":
             album_cover_url = get_song_album_cover_url("".join(artists), album)
+            print(album_cover_url)
 
         media_info = {
             "Type": media_type,
