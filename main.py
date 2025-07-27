@@ -4,6 +4,7 @@ import requests
 from pypresence import Presence, ActivityType
 from dotenv import load_dotenv
 import os
+from AlbumCoverFetcher import get_song_album_cover_url
 
 # TODO: log cleaning <-after certain date? certain amount of logs?
 load_dotenv()
@@ -169,6 +170,9 @@ def extract_now_playing(sessions):
         is_paused = play_state.get("IsPaused", False)
         is_muted = play_state.get("IsMuted", False)
         client = session.get("Client", "Unknown Client")
+        if media_type == "Audio":
+            album_cover_url = get_song_album_cover_url("".join(artists), album)
+            print(album_cover_url)
 
         media_info = {
             "Type": media_type,
@@ -283,7 +287,7 @@ def update_discord_presence(media_info):
                 "Album", media_info.get("SeriesName", media_info["Name"])
             ),
             small_text=f"{current_time} / {total_time}",
-            buttons=buttons,
+            #buttons=buttons, doesnt all ways work and prevents them from showing the Rich Presence
         )
     except Exception as e:
         logging.error(f"Failed to update Discord presence: {e}")
