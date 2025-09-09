@@ -31,7 +31,7 @@ This project integrates Jellyfin with Discord Rich Presence, allowing you to dis
 1. **Clone the Repository:**
 
     ```bash
-    git clone https://github.com/Ray-kong/jellyfin-discord-rich-presence.git
+    git clone https://github.com/Beyley/jellyfin-discord-rich-presence.git
     cd jellyfin-discord-rich-presence
     ```
 
