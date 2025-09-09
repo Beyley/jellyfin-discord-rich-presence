@@ -23,6 +23,7 @@ jellyfin_url = os.getenv("JELLYFIN_URL")
 api_key = os.getenv("JELLYFIN_API_KEY")
 user_id = os.getenv("JELLYFIN_USER_ID")
 omdb_api_key = os.getenv("OMDB_API_KEY")
+use_jellyfin_images = os.getenv("USE_JELLYFIN_IMAGES", "true").lower() == "true"
 headers = {"X-Emby-Token": api_key, "Content-Type": "application/json"}
 
 # Discord setup
@@ -82,7 +83,16 @@ def get_imdb_id(now_playing):
 FALLBACK = default_image_url
 
 
-def get_album_cover_url(now_playing):
+def get_jellyfin_image_url(now_playing):
+    item_id = now_playing.get("Id")
+    if not item_id:
+        return FALLBACK
+
+    item_url = f"{jellyfin_url}/Items/{item_id}/Images/Primary"
+
+    return item_url
+
+def get_omdb_album_cover_url(now_playing):
     # Return FALLBACK immediately if omdb_api_key is not defined
     if not omdb_api_key:
         return FALLBACK
@@ -142,7 +152,7 @@ def extract_now_playing(sessions):
             album = now_playing.get("Album", "Unknown Album")
             activity_type = ActivityType.LISTENING
             details = title
-            state = f"by {', '.join(artists)} from {album}"
+            state = f"by {', '.join(artists)}"
 
         elif media_type == "Movie":
             title = now_playing.get("Name", "Unknown Movie")
@@ -166,13 +176,23 @@ def extract_now_playing(sessions):
             details = title
             state = media_type
 
-        album_cover_url = get_album_cover_url(now_playing)
+        album_cover_url = get_jellyfin_image_url(now_playing) if use_jellyfin_images else FALLBACK
+
+        # If media is audio, try to get album cover from external source
+        if media_type == "Audio" and album_cover_url is FALLBACK:
+            new_cover_url = get_song_album_cover_url("".join(artists), album)
+            if new_cover_url is not None:
+                album_cover_url = new_cover_url
+
+        # Try to get OMDB cover if using Jellyfin images and it fails
+        if album_cover_url is FALLBACK:
+            new_cover_url = get_omdb_album_cover_url(now_playing)
+            if new_cover_url is not None:
+                album_cover_url = new_cover_url
+
         is_paused = play_state.get("IsPaused", False)
         is_muted = play_state.get("IsMuted", False)
         client = session.get("Client", "Unknown Client")
-        if media_type == "Audio":
-            album_cover_url = get_song_album_cover_url("".join(artists), album)
-            print(album_cover_url)
 
         media_info = {
             "Type": media_type,
