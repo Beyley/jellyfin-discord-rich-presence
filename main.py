@@ -68,9 +68,20 @@ def get_current_playing():
         logging.error(f"Failed to fetch sessions: {e}")
         return None
 
+def get_lyrics(item_id):
+    url = f"{jellyfin_url}/Audio/{item_id}/Lyrics"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        lyrics = response.json().get("Lyrics", [])
+
+        return lyrics
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to fetch sessions: {e}")
+        return None
+
 
 def get_imdb_id(now_playing):
-
     urls = now_playing.get("ExternalUrls", [])
     for url in urls:
         if url.get("Name") == "IMDb":
@@ -125,6 +136,7 @@ def extract_now_playing(sessions):
     series_name = "Unknown Series"
     season_number = None
     episode_number = None
+    has_lyrics = False
 
     for session in sessions:
         now_playing = session.get("NowPlayingItem")
@@ -153,6 +165,7 @@ def extract_now_playing(sessions):
             activity_type = ActivityType.LISTENING
             details = title
             state = f"by {', '.join(artists)}"
+            has_lyrics = now_playing.get("HasLyrics", False)
 
         elif media_type == "Movie":
             title = now_playing.get("Name", "Unknown Movie")
@@ -208,6 +221,7 @@ def extract_now_playing(sessions):
             "ClientName": client,
             "ActivityType": activity_type,
             "ExternalUrls": now_playing.get("ExternalUrls", []),
+            "HasLyrics": has_lyrics,
         }
 
         if media_type == "Audio":
@@ -247,6 +261,19 @@ def update_discord_presence(media_info):
         if "PositionTicks" not in media_info or "RunTimeTicks" not in media_info:
             logging.error("Missing timing information")
             return
+
+        lyrics = []
+        if(media_info.get("HasLyrics", False)):
+            lyrics = get_lyrics(media_info["Id"])
+
+        current_lyric = None
+        # find the first Lyric with a `Start` less than or equal to the current PositionTicks
+        if lyrics:
+            for lyric in lyrics:
+                if lyric["Start"] <= media_info["PositionTicks"]:
+                    current_lyric = lyric["Text"]
+                else:
+                    break
 
         current_time = format_time(media_info["PositionTicks"])
         total_time = format_time(media_info["RunTimeTicks"])
@@ -292,14 +319,19 @@ def update_discord_presence(media_info):
         logging.info(f"State: {media_info['State']}")
         logging.info(f"Time: {current_time} / {total_time}")
         logging.info(f"Status: {status_text}")
+        logging.info(f"Current Lyric: {current_lyric}")
         if buttons:
             logging.info(f"Button URLs: {[button['url'] for button in buttons]}")
         logging.info("---")
 
+        state_line = media_info["State"]
+        if current_lyric:
+            state_line += f" • \"{current_lyric}\" /lyr"
+
         RPC.update(
             activity_type=media_info["ActivityType"],
             details=media_info["Details"],
-            state=media_info["State"],
+            state=state_line,
             start=start_time,
             end=end_time,
             large_image=media_info["AlbumCoverUrl"],
