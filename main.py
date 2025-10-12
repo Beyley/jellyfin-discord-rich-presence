@@ -5,6 +5,7 @@ from pypresence import Presence, ActivityType
 from dotenv import load_dotenv
 import os
 from AlbumCoverFetcher import get_song_album_cover_url
+import textwrap
 
 # TODO: log cleaning <-after certain date? certain amount of logs?
 load_dotenv()
@@ -263,8 +264,17 @@ def update_discord_presence(media_info):
             return
 
         lyrics = []
-        if(media_info.get("HasLyrics", False)):
-            lyrics = get_lyrics(media_info["Id"])
+        # if(media_info.get("HasLyrics", False)):
+        #     lyrics = get_lyrics(media_info["Id"])
+        try:
+            if media_info.get("HasLyrics", False):
+                lyrics = get_lyrics(media_info["Id"])
+                if lyrics:
+                    # Sort lyrics by Start time
+                    lyrics.sort(key=lambda x: x["Start"])
+        except Exception as e:
+            logging.error(f"Failed to fetch lyrics: {e}")
+            lyrics = []
 
         current_lyric = None
         # find the first Lyric with a `Start` less than or equal to the current PositionTicks
@@ -274,6 +284,10 @@ def update_discord_presence(media_info):
                     current_lyric = lyric["Text"]
                 else:
                     break
+
+        # dont send lyrics if there's only one line
+        if len(lyrics) <= 1:
+            current_lyric = None
 
         current_time = format_time(media_info["PositionTicks"])
         total_time = format_time(media_info["RunTimeTicks"])
@@ -326,7 +340,9 @@ def update_discord_presence(media_info):
 
         state_line = media_info["State"]
         if current_lyric:
-            state_line += f" • \"{current_lyric}\" /lyr"
+            state_line += f" • \"{textwrap.shorten(current_lyric, width=100, placeholder="...")}\" /lyr"
+
+        logging.info(f"Final state line: {state_line}")
 
         RPC.update(
             activity_type=media_info["ActivityType"],
