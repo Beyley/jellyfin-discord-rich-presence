@@ -131,6 +131,7 @@ def extract_now_playing(sessions):
 
     # Initialize variables with default values
     artists = []
+    artists_imgs = []
     album = "Unknown Album"
     year = None
     genres = []
@@ -158,9 +159,16 @@ def extract_now_playing(sessions):
             artists = [
                 artist.get("Name") for artist in now_playing.get("ArtistItems", [])
             ]
+            artists_imgs = [
+                get_jellyfin_image_url(artist) for artist in now_playing.get("AlbumArtists", [])
+            ]
+
             if not artists:
                 artists = [
                     artist.get("Name") for artist in now_playing.get("AlbumArtists", [])
+                ]
+                artists_imgs = [
+                    get_jellyfin_image_url(artist) for artist in now_playing.get("AlbumArtists", [])
                 ]
             album = now_playing.get("Album", "Unknown Album")
             activity_type = ActivityType.LISTENING
@@ -223,6 +231,8 @@ def extract_now_playing(sessions):
             "ActivityType": activity_type,
             "ExternalUrls": now_playing.get("ExternalUrls", []),
             "HasLyrics": has_lyrics,
+            "FirstArtistImageUrl": artists_imgs[0] if artists_imgs else None,
+            "FirstArtistName": artists[0] if artists else None,
         }
 
         if media_type == "Audio":
@@ -354,7 +364,8 @@ def update_discord_presence(media_info):
             large_text=media_info.get(
                 "Album", media_info.get("SeriesName", media_info["Name"])
             ),
-            small_text=f"{current_time} / {total_time}",
+            small_image=media_info.get("FirstArtistImageUrl", None),
+            small_text=media_info.get("FirstArtistName", None),
             #buttons=buttons, doesnt all ways work and prevents them from showing the Rich Presence
         )
     except Exception as e:
